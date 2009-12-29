@@ -1,0 +1,329 @@
+<?php
+/**
+ * Zend Framework
+ *
+ * LICENSE
+ *
+ * This source file is subject to the new BSD license that is bundled
+ * with this package in the file LICENSE.txt.
+ * It is also available through the world-wide-web at this URL:
+ * http://framework.zend.com/license/new-bsd
+ * If you did not receive a copy of the license and are unable to
+ * obtain it through the world-wide-web, please send an email
+ * to license@zend.com so we can send you a copy immediately.
+ *
+ * @category   Dkplus
+ * @package    Dkplus_Model
+ * @subpackage Db
+ * @copyright  Copyright (c) 2009 Oskar Bley <oskar@steppenhahn.de>
+ * @version    07.04.2009 15:48:16
+ * @license    http://framework.zend.com/license/new-bsd     New BSD License
+ */
+
+/** 
+ * @see Dkplus_Model_Interface  
+ */
+//require-once 'Dkplus/Model/Interface.php';
+
+/** 
+ * @see Dkplus_Model_Exception
+ */
+//require-once 'Dkplus/Model/Exception.php';
+
+/**
+ * <p>
+ * Die Db-Variante des Models dient als weitere Abstraktionsschicht, die den
+ * direkten Zugriff auf das Zend_Db_Table_Abstract-Objekt verweigert.
+ * </p>
+ * 
+ * <p>
+ * Um ein Model mit Dkplus_Model_Db_Abstract zu erstellen, muss eine Klasse 
+ * geschrieben werden, die Methode {@link _setDbTable()} überschreibt.
+ * </p>
+ * 
+ * <p>
+ * Das "inneren Objekt" wird standardmäßig über Sessions gespeichert. So ist es
+ * möglich, z.B. die Userdaten oder andere Daten persistent zu speichern und zentral
+ * zu nutzen.
+ * </p>
+ * 
+ *
+ * @category   Dkplus
+ * @package    Dkplus_Model
+ * @subpackage Db
+ * @copyright  Copyright (c) 2009 Oskar Bley <oskar@steppenhahn.de>
+ * @license    http://framework.zend.com/license/new-bsd     New BSD License
+ */
+abstract class Dkplus_Model_Db_Abstract implements Dkplus_Model_Interface{
+	/**
+	 * Kann gesetzt werden, um den Session-Namespace zu setzen. Andernfalls
+	 * wird der Name der Klasse als Session-Namespace genutzt.
+	 * @var string
+	 */
+	protected $_sessionNamespace = null;
+	
+	/**
+	 * Session-Namespace Objekt des Models.
+	 * @var Zend_Session_Namespace
+	 */
+	protected $_session = null;
+	
+	/**
+	 * Mittels dieses Attributes lässt sich eine andere Klasse für die 
+	 * {@link Dkplus_Model_Row_Interface Row-Objekte} nutzen.
+	 * Um eine volle Unterstützung zu gewährleisten, sollte sie das
+	 * {@link Dkplus_Model_Db_Connectable_Interface} implementieren.
+	 * @var string
+	 */
+	protected $_rowClass = 'Dkplus_Model_Row_Db';
+	
+	/**
+	 * Mittels dieses Attributes lässt sich eine andere Klasse für die 
+	 * {@link Dkplus_Model_Rowset_Interface Rowset-Objekte} nutzen.
+	 * Um eine volle Unterstützung zu gewährleisten, sollte sie das
+	 * {@link Dkplus_Model_Db_Connectable_Interface} implementieren.
+	 * @var string
+	 */
+	protected $_rowsetClass = 'Dkplus_Model_Rowset_Db';
+	
+	public function __get($property){
+		return $this->_getInnerRow()->offsetGet($property);
+	}
+	
+	public function __set($property, $value){
+		$this->_getInnerRow()->offsetSet($property, $value);
+		return $this;
+	}
+	
+	public function __isset($property){
+		return $this->_getInnerRow()->offsetExists($property);
+	}
+	
+	public function offsetExists($offset){
+		return $this->_getInnerRow()->offsetExists($offset);
+	}
+	
+	public function offsetSet($offset, $value){
+		$this->_getInnerRow()->offsetSet($offset, $value);
+	}
+	
+	public function offsetGet($offset){
+		$this->_getInnerRow()->offsetGet($offset);
+	}
+	
+	public function offsetUnset($offset){
+		$this->_getInnerRow()->offsetUnset($offset);
+	}
+
+	
+	/**
+	 * @var Zend_Db_Table_Abstract
+	 */
+	protected $_dbTable = null;
+	
+	/**
+	 * Hook zum Setzen des DbTable-Objektes.
+	 * @return Dkplus_Model_Db_Abstract
+	 */
+	abstract protected function _setDbTable();
+	
+	/**
+	 * @return Zend_Session_Namespace
+	 */
+	protected function _getSessionNamespace(){
+		if(
+			is_null($this->_session)
+		){
+			$sessionNamespace = is_null($this->_sessionNamespace)
+				? get_class($this)
+				: (string) $this->_sessionNamespace;
+			$this->_session = new Zend_Session_Namespace($sessionNamespace);
+		}
+		return $this->_session;
+	}
+	
+	/**
+	 * @return Zend_Db_Table_Abstract
+	 * @throws {@link Dkplus_Model_Exception} if the table has not been set before.
+	 * Wirft eine {@link Dkplus_Model_Exception} wenn die Tabelle nicht gesetzt wurde.
+	 */
+	protected function _getDbTable(){
+		if(
+			is_null($this->_dbTable)
+		){
+			$this->_setDbTable();
+			if(
+				is_null($this->_dbTable)
+			){
+				throw new Dkplus_Model_Exception('Table must be set before.');
+			}
+		}
+		return $this->_dbTable;
+	}	
+	
+	/**
+	 * @throws Dkplus_Model_Exception on wrong parameters.
+	 * @see Model/Dkplus_Model_Interface#fetchEntries()	 
+	 */
+	public function fetchEntries($value = null, $crit = null){
+		if(
+			!is_scalar($value)
+			&& !is_null($value)
+		){
+			throw new Dkplus_Model_Exception(
+    			sprintf('First Parameter has an invalid type "%s", must be an scalar or null.', 
+    				getType($value)));
+		}
+		
+		if(
+			!is_string($crit)
+			&& !is_null($crit)
+		){
+			throw new Dkplus_Model_Exception(
+    			sprintf('Second Parameter has an invalid type "%s", must be an string or null.', 
+    				getType($crit)));
+		}
+		
+		if(
+			is_null($value)
+		){
+			if(
+				!is_null($crit)
+			){
+				throw new Dkplus_Model_Exception('If the first parameter is null the second must be also null.');
+			}
+			$dbRowset = $this->_getDbTable()->fetchAll();
+		}
+		elseif(
+			is_null($crit)
+		){
+			$dbRowset = $this->_getDbTable()->find($value);
+		}
+		else{
+			$dbRowset = $this->_getDbTable()->fetchAll($this->_getDbTable()->select()->where($crit.' = ?', $value));
+		}
+
+		$rowset = new $this->_rowsetClass();
+		$rowset->addRows($dbRowset);
+		return $rowset;
+	}
+	
+	/**
+	 * @param mixed $value
+	 * @param string $crit
+	 * @return Dkplus_Model_Row_Interface
+	 * @throws Dkplus_Model_Exception on wrong parameters.
+	 * @see Model/Dkplus_Model_Interface#fetchEntry()
+	 */
+	public function fetchEntry($value, $crit = null){
+		if(
+			!is_scalar($value)
+		){
+			throw new Dkplus_Model_Exception(
+    			sprintf('First Parameter has an invalid type "%s", must be an scalar.', 
+    				getType($value)
+    			)
+    		);
+		}
+		
+		if(
+			!is_string($crit)
+			&& !is_null($crit)
+		){
+			throw new Dkplus_Model_Exception(
+    			sprintf('Second Parameter has an invalid type "%s", must be an string or null.', 
+    				getType($crit)
+    			)
+    		);
+		}
+		
+		if(
+			is_null($crit)
+		){
+			$dbRow = $this->_getDbTable()->find($value)->current();
+		}
+		else{
+			$dbRow = $this->_getDbTable()->fetchRow($this->_getDbTable()->select()->where($crit.' = ?', $value));
+		}
+		
+		if(
+			is_null($dbRow)
+		){
+			return null;
+		}
+		
+		$row = new $this->_rowClass();
+		$row->setRow($dbRow);
+		return $row;
+		
+	}
+	
+	public function fetchToInner($value, $crit = null){
+		$row = $this->fetchEntry($value, $crit);
+		$this->_setInnerRow($row);
+		return $this;
+	}
+	
+	protected function _setInnerRow($row){
+		$this->_getSessionNamespace()->row = $row;
+		return $this;
+	}
+	
+	/**
+	 * @return Dkplus_Model_Row_Interface
+	 */
+	protected function _getInnerRow(){
+		if(
+			!$this->_hasInnerRow()
+		){
+			throw new Dkplus_Model_Exception('There are no inner row stored.');
+		}
+		$row = $this->_getSessionNamespace()->row; 
+		if(
+			$row instanceOf Dkplus_Model_Row_Db
+			&& !$row->isConnected() 
+		){
+			$row->connect($this->_getDbTable());
+		}
+		return $row;
+	}
+	
+	/**
+	 * @return boolean
+	 */
+	protected function _hasInnerRow(){
+		return isset($this->_getSessionNamespace()->row) && !is_null($this->_getSessionNamespace()->row);
+	}
+	
+	public function insert(array $data){
+		return $this->_getDbTable()->insert($data);
+	}
+	
+	public function update(array $data, $key, $value){
+		$where = is_null($value)
+			? $key.' IS NULL'
+			: $this->_getDbTable()->getAdapter()->quoteInto($key.' = ?', $value);
+		return $this->_getDbTable()->update($data, $where);
+	}
+	
+	public function delete($key, $value){
+		$where = is_null($value)
+			? $key.' IS NULL'
+			: $this->_getDbTable()->getAdapter()->quoteInto($key.' = ?', $value);
+		return $this->_getDbTable()->delete($where);
+	}
+	
+	/**
+	 * @return Dkplus_Model_Row_Interface
+	 * @see Model/Dkplus_Model_Interface#fetchNew()
+	 */
+	public function fetchNew(){
+		$row = new $this->_rowClass();
+		if(
+			$row instanceOf Dkplus_Model_Row_Db
+		){
+			$row->connect($this->_getDbTable());
+		}
+		return $row;
+	}
+}
